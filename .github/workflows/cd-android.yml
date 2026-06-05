@@ -94,8 +94,16 @@ jobs:
 
       # 10. Decode Google Play service account key
       - name: Decode Google Play key
+        id: gplay_key
         run: |
-          echo "${{ secrets.GOOGLE_PLAY_KEY }}" | base64 --decode > gplay-key.json
+          KEY="${{ secrets.GOOGLE_PLAY_KEY }}"
+          if [ "$KEY" = "PLACEHOLDER_ADD_REAL_KEY_BEFORE_DEPLOYING" ]; then
+            echo "⚠️ GOOGLE_PLAY_KEY is a placeholder — skipping Play Store upload."
+            echo "ready=false" >> $GITHUB_OUTPUT
+          else
+            echo "$KEY" | base64 --decode > gplay-key.json
+            echo "ready=true" >> $GITHUB_OUTPUT
+          fi
 
       # 11. Determine Play Store track
       - name: Set deploy track
@@ -109,6 +117,7 @@ jobs:
 
       # 12. Upload to Google Play
       - name: Upload to Google Play (${{ steps.track.outputs.track }} track)
+        if: steps.gplay_key.outputs.ready == 'true'
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJson: gplay-key.json

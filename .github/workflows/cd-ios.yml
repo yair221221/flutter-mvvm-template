@@ -20,14 +20,27 @@ jobs:
       name: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
 
     steps:
+      # 0. Check if iOS secrets are configured
+      - name: Check iOS secrets are configured
+        id: ios_ready
+        run: |
+          if [ "${{ secrets.IOS_CERTIFICATE_BASE64 }}" = "PLACEHOLDER_CONFIGURE_BEFORE_DEPLOYING" ]; then
+            echo "⚠️ iOS secrets are placeholders — skipping iOS deployment."
+            echo "ready=false" >> $GITHUB_OUTPUT
+          else
+            echo "ready=true" >> $GITHUB_OUTPUT
+          fi
+
       # 1. Source
       - name: Checkout code
+        if: steps.ios_ready.outputs.ready == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       # 2. Toolchain
       - name: Set up Flutter
+        if: steps.ios_ready.outputs.ready == 'true'
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.22.x"
@@ -36,29 +49,26 @@ jobs:
 
       # 3. Dependencies
       - name: Install Flutter dependencies
+        if: steps.ios_ready.outputs.ready == 'true'
         run: flutter pub get
 
       # 4. Import signing certificate into a temporary keychain
       - name: Import signing certificate
+        if: steps.ios_ready.outputs.ready == 'true'
         env:
           CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
         run: |
-          # Create a temporary keychain
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          # Decode and import the .p12 certificate
           echo "$CERTIFICATE_BASE64" | base64 --decode > $RUNNER_TEMP/cert.p12
           security import "$RUNNER_TEMP/cert.p12" \
             -P "$CERTIFICATE_PASSWORD" \
             -A -t cert -f pkcs12 \
             -k "$KEYCHAIN_PATH"
-
-          # Make the keychain the default and allow codesign to access it
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: \
@@ -66,13 +76,13 @@ jobs:
 
       # 5. Install provisioning profile
       - name: Install provisioning profile
+        if: steps.ios_ready.outputs.ready == 'true'
         env:
           PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
           PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles"
           mkdir -p "$PROFILE_PATH"
           echo "$PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
-          # Extract UUID and name the file by UUID (Xcode convention)
           UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" \
             /dev/stdin <<< $(security cms -D -i "$RUNNER_TEMP/profile.mobileprovision"))
           cp "$RUNNER_TEMP/profile.mobileprovision" "$PROFILE_PATH/$UUID.mobileprovision"
@@ -80,6 +90,7 @@ jobs:
 
       # 6. Compute build number from commit count
       - name: Compute build number
+        if: steps.ios_ready.outputs.ready == 'true'
         id: version
         run: |
           BUILD_NUMBER=$(git rev-list --count HEAD)
@@ -88,12 +99,14 @@ jobs:
 
       # 7. Build Flutter iOS release (with code signing)
       - name: Build iOS release
+        if: steps.ios_ready.outputs.ready == 'true'
         run: |
           flutter build ios --release \
             --build-number=${{ steps.version.outputs.number }}
 
       # 8. Archive and export IPA via xcodebuild
       - name: Archive app
+        if: steps.ios_ready.outputs.ready == 'true'
         run: |
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
@@ -106,6 +119,7 @@ jobs:
             | xcpretty --color
 
       - name: Export IPA
+        if: steps.ios_ready.outputs.ready == 'true'
         run: |
           cat <<EOF > $RUNNER_TEMP/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
@@ -133,6 +147,7 @@ jobs:
 
       # 9. Upload IPA as workflow artifact
       - name: Upload IPA artifact
+        if: steps.ios_ready.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ios-ipa-${{ github.ref_name }}-${{ steps.version.outputs.number }}
@@ -141,6 +156,7 @@ jobs:
 
       # 10. Write App Store Connect API key
       - name: Write App Store Connect API key
+        if: steps.ios_ready.outputs.ready == 'true'
         run: |
           mkdir -p ~/.private_keys
           echo "${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}" \
@@ -149,7 +165,7 @@ jobs:
 
       # 11a. Develop → TestFlight beta
       - name: Upload to TestFlight (develop)
-        if: github.ref_name == 'develop'
+        if: steps.ios_ready.outputs.ready == 'true' && github.ref_name == 'develop'
         run: |
           xcrun altool --upload-app \
             --type ios \
@@ -160,7 +176,7 @@ jobs:
 
       # 11b. Main → App Store submission
       - name: Submit to App Store (main)
-        if: github.ref_name == 'main'
+        if: steps.ios_ready.outputs.ready == 'true' && github.ref_name == 'main'
         run: |
           xcrun altool --upload-app \
             --type ios \
