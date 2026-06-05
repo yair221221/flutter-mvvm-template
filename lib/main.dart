@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 
 import 'core/utils/env_config.dart';
 import 'core/utils/injection_container.dart' as di;
-import 'presentation/pages/home/home_page.dart';
+import 'presentation/pages/dashboard/dashboard_page.dart';
+import 'presentation/viewmodels/dashboard_viewmodel.dart';
 import 'presentation/viewmodels/home_viewmodel.dart';
 
 // Entry point — reads FLUTTER_APP_FLAVOR dart-define (defaults to development)
@@ -38,9 +39,10 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => di.sl<HomeViewModel>()),
+        ChangeNotifierProvider(create: (_) => di.sl<DashboardViewModel>()),
       ],
       child: MaterialApp(
-        title: 'Flutter MVVM Template',
+        title: 'Digital Wellness',
         debugShowCheckedModeBanner: env.showDebugBanner,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
@@ -49,7 +51,7 @@ class MyApp extends StatelessWidget {
         builder: env.enableLogging
             ? (context, child) => _DevBanner(env: env, child: child!)
             : null,
-        home: const HomePage(),
+        home: const DashboardPage(),
       ),
     );
   }
