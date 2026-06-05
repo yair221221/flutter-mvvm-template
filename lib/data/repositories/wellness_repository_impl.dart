@@ -7,6 +7,7 @@ import '../../domain/entities/wellness_score.dart';
 import '../../domain/repositories/wellness_repository.dart';
 import '../services/app_categorizer.dart';
 import '../services/usage_stats_service.dart';
+import '../services/step_counter_service.dart';
 
 class WellnessRepositoryImpl implements WellnessRepository {
   WellnessRepositoryImpl();
@@ -27,7 +28,7 @@ class WellnessRepositoryImpl implements WellnessRepository {
       return Right(WellnessScore(
         date: date,
         appRecords: records,
-        steps: _getMockSteps(),
+        steps: await StepCounterService.getStepsToday(),
       ));
     } catch (e) {
       return Left(ServerFailure('Failed to load usage data: $e'));
@@ -74,8 +75,6 @@ class WellnessRepositoryImpl implements WellnessRepository {
         category: AppCategorizer.categorize(pkg),
         date: date,
       );
-
-  int _getMockSteps() => 6800; // TODO: integrate health package
 
   String _prettifyPackage(String pkg) {
     final parts = pkg.split('.');

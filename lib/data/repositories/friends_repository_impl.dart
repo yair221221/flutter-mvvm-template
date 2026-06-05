@@ -7,7 +7,7 @@ import '../../domain/entities/friend_request.dart';
 import '../../domain/entities/friend_suggestion.dart';
 import '../../domain/repositories/friends_repository.dart';
 
-class FriendsRepositoryImpl implements FriendsRepository {
+class FriendsRepositoryImpl extends FriendsRepository {
   final SharedPreferences _prefs;
 
   static const _kFriendIds  = 'friends_friend_ids';

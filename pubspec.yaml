@@ -33,6 +33,13 @@ dependencies:
   # Deep links for WhatsApp / SMS invite sharing
   url_launcher: ^6.3.0
 
+  # Firebase — real-time friends DB + user identity + historical score storage
+  # Set kFirebaseEnabled = true in lib/core/config/firebase_config.dart after
+  # replacing android/app/google-services.json with your real Firebase config.
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

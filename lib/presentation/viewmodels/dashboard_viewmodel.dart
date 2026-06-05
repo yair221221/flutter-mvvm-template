@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+import '../../core/config/firebase_config.dart';
+import '../../data/services/wellness_cloud_sync_service.dart';
 import '../../domain/entities/wellness_score.dart';
 import '../../domain/repositories/wellness_repository.dart';
 import '../../domain/usecases/get_wellness_score_usecase.dart';
@@ -49,6 +51,10 @@ class DashboardViewModel extends ChangeNotifier {
       (score) {
         _score = score;
         _state = DashboardState.success;
+        // Sync to Firestore so friends can see this score in real time
+        if (kFirebaseEnabled) {
+          WellnessCloudSyncService.syncScore(score);
+        }
       },
     );
     notifyListeners();

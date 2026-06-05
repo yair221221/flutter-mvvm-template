@@ -1,10 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../domain/entities/friend.dart';
 import '../../domain/entities/friend_request.dart';
 import '../../domain/entities/friend_suggestion.dart';
 import '../../domain/repositories/friends_repository.dart';
-import '../../domain/usecases/get_friends_usecase.dart';
-import '../../domain/usecases/get_requests_usecase.dart';
 import '../../domain/usecases/get_suggestions_usecase.dart';
 import '../../domain/usecases/accept_request_usecase.dart';
 import '../../domain/usecases/decline_request_usecase.dart';
@@ -12,26 +11,20 @@ import '../../domain/usecases/decline_request_usecase.dart';
 enum FriendsLoadState { initial, loading, success, error }
 
 class FriendsViewModel extends ChangeNotifier {
-  final GetFriendsUseCase _getFriends;
-  final GetRequestsUseCase _getRequests;
+  final FriendsRepository _repository;
   final GetSuggestionsUseCase _getSuggestions;
   final AcceptRequestUseCase _acceptRequest;
   final DeclineRequestUseCase _declineRequest;
-  final FriendsRepository _repository;
 
   FriendsViewModel({
-    required GetFriendsUseCase getFriends,
-    required GetRequestsUseCase getRequests,
+    required FriendsRepository repository,
     required GetSuggestionsUseCase getSuggestions,
     required AcceptRequestUseCase acceptRequest,
     required DeclineRequestUseCase declineRequest,
-    required FriendsRepository repository,
-  })  : _getFriends = getFriends,
-        _getRequests = getRequests,
+  })  : _repository = repository,
         _getSuggestions = getSuggestions,
         _acceptRequest = acceptRequest,
-        _declineRequest = declineRequest,
-        _repository = repository;
+        _declineRequest = declineRequest;
 
   FriendsLoadState _state = FriendsLoadState.initial;
   List<Friend> _friends = [];
@@ -39,6 +32,9 @@ class FriendsViewModel extends ChangeNotifier {
   List<FriendSuggestion> _suggestions = [];
   final Set<String> _invitedIds = {};
   String? _errorMessage;
+
+  StreamSubscription<List<Friend>>? _friendsSub;
+  StreamSubscription<List<FriendRequest>>? _requestsSub;
 
   FriendsLoadState get state => _state;
   List<Friend> get friends => _friends;
@@ -52,57 +48,72 @@ class FriendsViewModel extends ChangeNotifier {
     _state = FriendsLoadState.loading;
     notifyListeners();
 
-    String? error;
+    // Cancel any previous subscriptions before re-subscribing
+    await _friendsSub?.cancel();
+    await _requestsSub?.cancel();
 
-    (await _getFriends()).fold(
-      (f) => error = f.message,
-      (data) => _friends = data,
+    // Subscribe to real-time friend stream (Firestore or mock-wrapped Future)
+    _friendsSub = _repository.streamFriends().listen(
+      (friends) {
+        _friends = friends;
+        if (_state == FriendsLoadState.loading) {
+          _state = FriendsLoadState.success;
+        }
+        notifyListeners();
+      },
+      onError: (e) {
+        _errorMessage = 'Failed to load friends';
+        _state = FriendsLoadState.error;
+        notifyListeners();
+      },
     );
 
-    if (error != null) {
-      _state = FriendsLoadState.error;
-      _errorMessage = error;
-      notifyListeners();
-      return;
-    }
-
-    (await _getRequests()).fold(
-      (f) => error = f.message,
-      (data) => _requests = data,
+    // Subscribe to real-time requests stream
+    _requestsSub = _repository.streamRequests().listen(
+      (requests) {
+        _requests = requests;
+        notifyListeners();
+      },
     );
 
+    // Suggestions are a one-shot fan-out query (not streamed)
     (await _getSuggestions()).fold(
-      (f) => error = f.message,
-      (data) => _suggestions = data,
+      (f) { _errorMessage = f.message; },
+      (data) { _suggestions = data; },
     );
 
-    if (error != null) {
-      _state = FriendsLoadState.error;
-      _errorMessage = error;
-    } else {
+    if (_state == FriendsLoadState.loading) {
       _state = FriendsLoadState.success;
     }
     notifyListeners();
   }
 
   Future<void> accept(String id) async {
-    final req = _requests.firstWhere((r) => r.id == id,
-        orElse: () => const FriendRequest(
-            id: '', name: '', avatarEmoji: '', score: 0, grade: 'F', mutualFriends: 0));
+    final req = _requests.firstWhere(
+      (r) => r.id == id,
+      orElse: () => const FriendRequest(
+          id: '', name: '', avatarEmoji: '', score: 0, grade: 'F', mutualFriends: 0),
+    );
     if (req.id.isEmpty) return;
 
     (await _acceptRequest(id)).fold(
       (failure) => null,
       (_) {
+        // For the mock path (no real-time stream), update the lists optimistically
         _requests.removeWhere((r) => r.id == id);
-        _friends.insert(0, Friend(
-          id: req.id,
-          name: req.name,
-          avatarEmoji: req.avatarEmoji,
-          score: req.score,
-          grade: req.grade,
-          isOnline: false,
-        ));
+        if (!_friends.any((f) => f.id == id)) {
+          _friends.insert(
+            0,
+            Friend(
+              id: req.id,
+              name: req.name,
+              avatarEmoji: req.avatarEmoji,
+              score: req.score,
+              grade: req.grade,
+              isOnline: false,
+            ),
+          );
+        }
         notifyListeners();
       },
     );
@@ -125,6 +136,13 @@ class FriendsViewModel extends ChangeNotifier {
 
   Future<String> generateInviteText() async {
     final result = await _repository.generateInviteText();
-    return result.fold((f) => 'Join me on Digital Wellness! 🌟', (text) => text);
+    return result.fold((f) => 'Join me on Digital Wellness! ??', (text) => text);
+  }
+
+  @override
+  void dispose() {
+    _friendsSub?.cancel();
+    _requestsSub?.cancel();
+    super.dispose();
   }
 }

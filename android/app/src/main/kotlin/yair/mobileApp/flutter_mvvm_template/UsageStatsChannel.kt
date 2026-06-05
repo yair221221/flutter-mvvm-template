@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Process
 import android.provider.Settings
+import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
@@ -18,14 +19,19 @@ import io.flutter.plugin.common.MethodChannel
  *   getUsageStats(startMs: Long, endMs: Long) → List<Map<String, Any>>
  *     Each map: { packageName, totalTimeMs }
  */
-class UsageStatsChannel(private val context: Context) :
-    MethodChannel.MethodCallHandler {
+class UsageStatsChannel(private val context: Context, messenger: BinaryMessenger) {
 
     companion object {
         const val CHANNEL = "yair.mobileApp/usage_stats"
     }
 
-    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+    init {
+        MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
+            onMethodCall(call, result)
+        }
+    }
+
+    private fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "hasUsagePermission" -> result.success(hasPermission())
 

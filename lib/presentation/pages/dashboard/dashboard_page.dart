@@ -13,13 +13,33 @@ class DashboardPage extends StatefulWidget {
   @override State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends State<DashboardPage>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DashboardViewModel>().load();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// When the user returns from the Android Usage Access settings screen,
+  /// automatically re-check permission and reload without requiring a restart.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final vm = context.read<DashboardViewModel>();
+      if (vm.state == DashboardState.permissionRequired) {
+        vm.load();
+      }
+    }
   }
 
   @override
