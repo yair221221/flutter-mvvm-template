@@ -55,3 +55,12 @@ lib/generated_plugin_registrant.dart
 *.lock
 coverage/
 doc/api/
+
+# Native platform build outputs
+android/.gradle/
+android/app/build/
+build/
+.dart_tool/
+.packages
+*.iml
+.idea/

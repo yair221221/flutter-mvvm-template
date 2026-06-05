@@ -8,11 +8,11 @@ import '../../data/repositories/item_repository_impl.dart';
 import '../../domain/repositories/item_repository.dart';
 import '../../domain/usecases/get_items_usecase.dart';
 import '../../presentation/viewmodels/home_viewmodel.dart';
-import 'constants.dart';
+import 'env_config.dart';
 
 final sl = GetIt.instance;
 
-Future<void> init() async {
+Future<void> init({EnvConfig env = EnvConfig.development}) async {
   // ViewModels
   sl.registerFactory(() => HomeViewModel(getItems: sl()));
 
@@ -37,9 +37,9 @@ Future<void> init() async {
   sl.registerLazySingleton(() => prefs);
   sl.registerLazySingleton(() => Dio(
         BaseOptions(
-          baseUrl: AppConstants.baseUrl,
-          connectTimeout: const Duration(milliseconds: AppConstants.connectTimeoutMs),
-          receiveTimeout: const Duration(milliseconds: AppConstants.receiveTimeoutMs),
+          baseUrl: env.baseUrl,
+          connectTimeout: Duration(milliseconds: env.connectTimeoutMs),
+          receiveTimeout: Duration(milliseconds: env.receiveTimeoutMs),
         ),
       ));
 }
