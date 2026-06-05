@@ -1,0 +1,38 @@
+name: flutter_mvvm_template
+description: A Flutter MVVM + Clean Architecture template.
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  provider: ^6.1.2
+
+  # Dependency injection
+  get_it: ^7.6.7
+
+  # Networking
+  dio: ^5.4.0
+
+  # Local storage
+  shared_preferences: ^2.2.2
+
+  # Functional error handling
+  dartz: ^0.10.1
+
+  # Equatable for value equality
+  equatable: ^2.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.8
+
+flutter:
+  uses-material-design: true
