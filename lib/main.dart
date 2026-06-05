@@ -6,8 +6,20 @@ import 'core/utils/injection_container.dart' as di;
 import 'presentation/pages/home/home_page.dart';
 import 'presentation/viewmodels/home_viewmodel.dart';
 
-// Entry points per environment
-void main() => _run(EnvConfig.production);
+// Entry point — reads FLUTTER_APP_FLAVOR dart-define (defaults to development)
+void main() {
+  const flavor = String.fromEnvironment(
+    'FLUTTER_APP_FLAVOR',
+    defaultValue: 'development',
+  );
+  final env = switch (flavor) {
+    'production' => EnvConfig.production,
+    'staging' => EnvConfig.staging,
+    _ => EnvConfig.development,
+  };
+  _run(env);
+}
+
 void mainDev() => _run(EnvConfig.development);
 void mainStaging() => _run(EnvConfig.staging);
 
