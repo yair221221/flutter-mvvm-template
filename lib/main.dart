@@ -1,11 +1,12 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'core/navigation/shell_page.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/env_config.dart';
 import 'core/utils/injection_container.dart' as di;
-import 'presentation/pages/dashboard/dashboard_page.dart';
 import 'presentation/viewmodels/dashboard_viewmodel.dart';
+import 'presentation/viewmodels/friends_viewmodel.dart';
 import 'presentation/viewmodels/home_viewmodel.dart';
 
 void main() {
@@ -37,6 +38,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => di.sl<HomeViewModel>()),
         ChangeNotifierProvider(create: (_) => di.sl<DashboardViewModel>()),
+        ChangeNotifierProvider(create: (_) => di.sl<FriendsViewModel>()),
       ],
       child: MaterialApp(
         title: 'Digital Wellness',
@@ -47,7 +49,7 @@ class MyApp extends StatelessWidget {
         builder: env.enableLogging
             ? (context, child) => _DevBanner(env: env, child: child!)
             : null,
-        home: const DashboardPage(),
+        home: const ShellPage(),
       ),
     );
   }

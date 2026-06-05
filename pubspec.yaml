@@ -30,6 +30,9 @@ dependencies:
   # Fonts (Sora, Hanken Grotesk, JetBrains Mono)
   google_fonts: ^6.2.1
 
+  # Deep links for WhatsApp / SMS invite sharing
+  url_launcher: ^6.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
