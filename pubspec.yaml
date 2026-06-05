@@ -27,6 +27,9 @@ dependencies:
   # Equatable for value equality
   equatable: ^2.0.5
 
+  # Fonts (Sora, Hanken Grotesk, JetBrains Mono)
+  google_fonts: ^6.2.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

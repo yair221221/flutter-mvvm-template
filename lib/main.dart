@@ -1,27 +1,24 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'core/theme/app_theme.dart';
 import 'core/utils/env_config.dart';
 import 'core/utils/injection_container.dart' as di;
 import 'presentation/pages/dashboard/dashboard_page.dart';
 import 'presentation/viewmodels/dashboard_viewmodel.dart';
 import 'presentation/viewmodels/home_viewmodel.dart';
 
-// Entry point — reads FLUTTER_APP_FLAVOR dart-define (defaults to development)
 void main() {
-  const flavor = String.fromEnvironment(
-    'FLUTTER_APP_FLAVOR',
-    defaultValue: 'development',
-  );
+  const flavor = String.fromEnvironment('FLUTTER_APP_FLAVOR', defaultValue: 'development');
   final env = switch (flavor) {
     'production' => EnvConfig.production,
-    'staging' => EnvConfig.staging,
-    _ => EnvConfig.development,
+    'staging'    => EnvConfig.staging,
+    _            => EnvConfig.development,
   };
   _run(env);
 }
 
-void mainDev() => _run(EnvConfig.development);
+void mainDev()     => _run(EnvConfig.development);
 void mainStaging() => _run(EnvConfig.staging);
 
 Future<void> _run(EnvConfig env) async {
@@ -44,10 +41,9 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Digital Wellness',
         debugShowCheckedModeBanner: env.showDebugBanner,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          useMaterial3: true,
-        ),
+        theme: AppTheme.dark,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.dark,
         builder: env.enableLogging
             ? (context, child) => _DevBanner(env: env, child: child!)
             : null,
@@ -57,7 +53,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// Thin banner shown only in non-production environments.
 class _DevBanner extends StatelessWidget {
   final EnvConfig env;
   final Widget child;
@@ -68,7 +63,7 @@ class _DevBanner extends StatelessWidget {
     return Banner(
       message: env.name.toUpperCase(),
       location: BannerLocation.topStart,
-      color: env.name == 'staging' ? Colors.orange : Colors.green,
+      color: env.name == 'staging' ? Colors.orange : const Color(0xFF00F0FF),
       child: child,
     );
   }

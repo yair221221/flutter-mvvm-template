@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../domain/entities/app_usage_record.dart';
 import '../../../../domain/entities/app_category.dart';
 import '../../../../domain/entities/wellness_score.dart';
@@ -7,95 +9,92 @@ class AppUsageListWidget extends StatelessWidget {
   final WellnessScore score;
   const AppUsageListWidget({super.key, required this.score});
 
-  static const _categoryColors = {
-    AppCategory.shortVideo:   Color(0xFFF44336),
-    AppCategory.socialMedia:  Color(0xFFFF7043),
-    AppCategory.gaming:       Color(0xFFFF9800),
-    AppCategory.neutral:      Color(0xFF90A4AE),
-    AppCategory.educational:  Color(0xFF4CAF50),
-    AppCategory.reading:      Color(0xFF42A5F5),
-    AppCategory.mindfulness:  Color(0xFF9C27B0),
-    AppCategory.productivity: Color(0xFF00BCD4),
+  static const _glowColors = {
+    AppCategory.shortVideo:   AppColors.shortVideoGlow,
+    AppCategory.socialMedia:  AppColors.socialGlow,
+    AppCategory.gaming:       AppColors.gamingGlow,
+    AppCategory.neutral:      AppColors.neutralGlow,
+    AppCategory.educational:  AppColors.educationGlow,
+    AppCategory.reading:      AppColors.readingGlow,
+    AppCategory.mindfulness:  AppColors.mindfulnessGlow,
+    AppCategory.productivity: AppColors.productivityGlow,
   };
 
   @override
   Widget build(BuildContext context) {
-    // Sort: worst penalty first, then best bonuses
     final sorted = [...score.appRecords]
       ..sort((a, b) => a.pointContribution.compareTo(b.pointContribution));
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text('App Details',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.bold)),
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text('App Details', style: GoogleFonts.sora(
+              fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.onSurface)),
         ),
-        const SizedBox(height: 8),
-        ...sorted.map((r) => _AppTile(record: r,
-            color: _categoryColors[r.category]!)),
+        ...sorted.map((r) => _GlassAppTile(
+            record: r, color: _glowColors[r.category] ?? AppColors.neutralGlow)),
       ],
     );
   }
 }
 
-class _AppTile extends StatelessWidget {
+class _GlassAppTile extends StatelessWidget {
   final AppUsageRecord record;
   final Color color;
-  const _AppTile({required this.record, required this.color});
+  const _GlassAppTile({required this.record, required this.color});
 
   @override
   Widget build(BuildContext context) {
     final mins = record.usageMinutes;
-    final h = mins ~/ 60;
-    final m = mins % 60;
+    final h = mins ~/ 60; final m = mins % 60;
     final timeStr = h > 0 ? '${h}h ${m}m' : '${m}m';
     final pts = record.pointContribution;
     final ptsStr = pts >= 0 ? '+${pts.toStringAsFixed(1)}' : pts.toStringAsFixed(1);
     final isBonus = pts >= 0;
+    final badgeColor = isBonus ? AppColors.green : AppColors.shortVideoGlow;
 
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      color: color.withOpacity(0.08),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: color.withOpacity(0.2))),
-      child: ListTile(
-        dense: true,
-        leading: CircleAvatar(
-          radius: 18,
-          backgroundColor: color.withOpacity(0.2),
-          child: Text(record.category.emoji, style: const TextStyle(fontSize: 16)),
-        ),
-        title: Text(record.appName,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        subtitle: Text(
-          '${record.category.label} · $timeStr',
-          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-        ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: isBonus
-                ? Colors.green.withOpacity(0.15)
-                : Colors.red.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            ptsStr,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-              color: isBonus ? Colors.green[700] : Colors.red[700],
-            ),
-          ),
-        ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.2)),
+        boxShadow: [BoxShadow(color: color.withOpacity(0.04), blurRadius: 12)],
       ),
+      child: Row(children: [
+        Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withOpacity(0.12),
+            border: Border.all(color: color.withOpacity(0.3)),
+            boxShadow: [BoxShadow(color: color.withOpacity(0.2), blurRadius: 8)],
+          ),
+          child: Center(child: Text(record.category.emoji,
+              style: const TextStyle(fontSize: 18))),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(record.appName, style: GoogleFonts.hankenGrotesk(
+              fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.onSurface)),
+          const SizedBox(height: 2),
+          Text('${record.category.label} · $timeStr', style: GoogleFonts.jetBrainsMono(
+              fontSize: 10, letterSpacing: 0.5, color: AppColors.onSurfaceVariant)),
+        ])),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: badgeColor.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(100),
+            border: Border.all(color: badgeColor.withOpacity(0.4)),
+            boxShadow: [BoxShadow(color: badgeColor.withOpacity(0.2), blurRadius: 8)],
+          ),
+          child: Text(ptsStr, style: GoogleFonts.jetBrainsMono(
+              fontSize: 12, fontWeight: FontWeight.w700, color: badgeColor)),
+        ),
+      ]),
     );
   }
 }
