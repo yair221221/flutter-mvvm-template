@@ -60,6 +60,80 @@ flutter test
 flutter pub run build_runner build --delete-conflicting-outputs
 ```
 
+## Branch & Deployment Strategy
+
+| Branch | CI | Android Deploy | iOS Deploy |
+|--------|----|----------------|------------|
+| `feature/*` | ✅ on PR | — | — |
+| `develop` | ✅ on push | Internal track (draft) | TestFlight beta |
+| `main` | ✅ on push | Production track | App Store submission |
+
+```
+feature/* ──PR──▶ develop ──PR──▶ main
+                    │                │
+               TestFlight       App Store
+               Internal track   Production track
+```
+
+## CI/CD Workflows
+
+| File | Trigger | Purpose |
+|------|---------|---------|
+| `.github/workflows/ci.yml` | Push/PR on `main`, `develop` | Lint, test, build validation |
+| `.github/workflows/cd-android.yml` | Push to `main`/`develop` | Sign AAB + deploy to Google Play |
+| `.github/workflows/cd-ios.yml` | Push to `main`/`develop` | Sign IPA + deploy to TestFlight/App Store |
+
+## Required GitHub Secrets
+
+### Create GitHub Environments
+Go to **Settings → Environments** and create two environments: `staging` and `production`.
+
+### Android Secrets
+
+| Secret | How to get it |
+|--------|---------------|
+| `KEYSTORE_BASE64` | `base64 -i release.keystore` |
+| `KEYSTORE_PASSWORD` | Password used when creating the keystore |
+| `KEY_PASSWORD` | Key entry password |
+| `KEYSTORE_ALIAS` | Key alias used during keystore creation |
+| `ANDROID_PACKAGE_NAME` | e.g. `com.example.app` |
+| `GOOGLE_PLAY_KEY` | Base64-encoded Google Play service account JSON: `base64 -i key.json` |
+
+**Create the keystore:**
+```bash
+keytool -genkey -v -keystore release.keystore \
+  -alias your-alias -keyalg RSA -keysize 2048 -validity 10000
+```
+
+**Create a Google Play service account:**
+1. Google Play Console → Setup → API access → Create service account
+2. Grant **Release Manager** role
+3. Download JSON key → `base64 -i key.json` → paste as `GOOGLE_PLAY_KEY`
+
+### iOS Secrets
+
+| Secret | How to get it |
+|--------|---------------|
+| `IOS_CERTIFICATE_BASE64` | `base64 -i Certificates.p12` |
+| `IOS_CERTIFICATE_PASSWORD` | Password set when exporting the .p12 |
+| `IOS_KEYCHAIN_PASSWORD` | Any strong random string (used for temp keychain) |
+| `IOS_PROVISIONING_PROFILE_BASE64` | `base64 -i profile.mobileprovision` |
+| `IOS_PROVISIONING_PROFILE_NAME` | Name shown in Apple Developer portal |
+| `IOS_BUNDLE_ID` | e.g. `com.example.app` |
+| `IOS_CODE_SIGN_IDENTITY` | e.g. `iPhone Distribution: Your Name (XXXXXXXXXX)` |
+| `APP_STORE_CONNECT_API_KEY_ID` | Key ID from App Store Connect → Users → Keys |
+| `APP_STORE_CONNECT_API_ISSUER_ID` | Issuer ID from the same page |
+| `APP_STORE_CONNECT_API_KEY_BASE64` | `base64 -i AuthKey_XXXXX.p8` |
+
+**Export .p12 certificate:**
+1. Keychain Access → My Certificates → right-click Distribution cert → Export
+2. Choose `.p12` format and set a password
+
+**Create App Store Connect API key:**
+1. App Store Connect → Users and Access → Keys → Generate API Key
+2. Role: **Developer** (minimum needed for uploads)
+3. Download the `.p8` file (only available once)
+
 ## Adding a New Feature
 
 1. **Entity** → `domain/entities/`

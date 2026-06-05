@@ -1,0 +1,191 @@
+name: CD - iOS
+
+on:
+  push:
+    branches:
+      - main      # → App Store submission
+      - develop   # → TestFlight beta
+
+concurrency:
+  group: cd-ios-${{ github.ref }}
+  cancel-in-progress: false   # Never cancel an in-flight deployment
+
+jobs:
+  deploy-ios:
+    name: Build, Sign & Deploy iOS IPA
+    runs-on: macos-latest
+
+    # ── Environment context ─────────────────────────────────────────────────
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+
+    steps:
+      # 1. Source
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2. Toolchain
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22.x"
+          channel: stable
+          cache: true
+
+      # 3. Dependencies
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      # 4. Import signing certificate into a temporary keychain
+      - name: Import signing certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+        run: |
+          # Create a temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Decode and import the .p12 certificate
+          echo "$CERTIFICATE_BASE64" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security import "$RUNNER_TEMP/cert.p12" \
+            -P "$CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # Make the keychain the default and allow codesign to access it
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      # 5. Install provisioning profile
+      - name: Install provisioning profile
+        env:
+          PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_PATH"
+          echo "$PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          # Extract UUID and name the file by UUID (Xcode convention)
+          UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" \
+            /dev/stdin <<< $(security cms -D -i "$RUNNER_TEMP/profile.mobileprovision"))
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$PROFILE_PATH/$UUID.mobileprovision"
+          echo "Installed provisioning profile UUID: $UUID"
+
+      # 6. Compute build number from commit count
+      - name: Compute build number
+        id: version
+        run: |
+          BUILD_NUMBER=$(git rev-list --count HEAD)
+          echo "number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "Build number: $BUILD_NUMBER"
+
+      # 7. Build Flutter iOS release (with code signing)
+      - name: Build iOS release
+        run: |
+          flutter build ios --release \
+            --build-number=${{ steps.version.outputs.number }}
+
+      # 8. Archive and export IPA via xcodebuild
+      - name: Archive app
+        run: |
+          xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/Runner.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}" \
+            CODE_SIGN_IDENTITY="${{ secrets.IOS_CODE_SIGN_IDENTITY }}" \
+            | xcpretty --color
+
+      - name: Export IPA
+        run: |
+          cat <<EOF > $RUNNER_TEMP/ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${{ secrets.IOS_BUNDLE_ID }}</key>
+              <string>${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/Runner.xcarchive \
+            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
+            -exportPath $RUNNER_TEMP/ipa \
+            | xcpretty --color
+
+      # 9. Upload IPA as workflow artifact
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-${{ github.ref_name }}-${{ steps.version.outputs.number }}
+          path: ${{ runner.temp }}/ipa/*.ipa
+          retention-days: 30
+
+      # 10. Write App Store Connect API key
+      - name: Write App Store Connect API key
+        run: |
+          mkdir -p ~/.private_keys
+          echo "${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}" \
+            | base64 --decode \
+            > ~/.private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+
+      # 11a. Develop → TestFlight beta
+      - name: Upload to TestFlight (develop)
+        if: github.ref_name == 'develop'
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$(ls $RUNNER_TEMP/ipa/*.ipa)" \
+            --apiKey "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
+            --apiIssuer "${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}" \
+            --verbose
+
+      # 11b. Main → App Store submission
+      - name: Submit to App Store (main)
+        if: github.ref_name == 'main'
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$(ls $RUNNER_TEMP/ipa/*.ipa)" \
+            --apiKey "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
+            --apiIssuer "${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}" \
+            --verbose
+
+      # 12. Clean up keychain and sensitive files
+      - name: Clean up keychain & secrets
+        if: always()
+        run: |
+          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
+          rm -f $RUNNER_TEMP/cert.p12
+          rm -f $RUNNER_TEMP/profile.mobileprovision
+          rm -rf ~/.private_keys
+
+      # 13. Summary
+      - name: Deployment summary
+        run: |
+          DESTINATION=$([[ "${{ github.ref_name }}" == "main" ]] && echo "App Store" || echo "TestFlight")
+          echo "### 🍎 iOS Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Destination | $DESTINATION |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Number | \`${{ steps.version.outputs.number }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY

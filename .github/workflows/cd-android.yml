@@ -1,0 +1,138 @@
+name: CD - Android
+
+on:
+  push:
+    branches:
+      - main      # → Production track
+      - develop   # → Internal track (staging)
+
+concurrency:
+  group: cd-android-${{ github.ref }}
+  cancel-in-progress: false   # Never cancel an in-flight deployment
+
+jobs:
+  deploy-android:
+    name: Build, Sign & Deploy Android AAB
+    runs-on: ubuntu-latest
+
+    # ── Environment context ─────────────────────────────────────────────────
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+
+    steps:
+      # 1. Source
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Full history needed for version calculation
+
+      # 2. Toolchain
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22.x"
+          channel: stable
+          cache: true
+
+      # 3. Dependencies
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      # 4. Decode & place the keystore
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+
+      # 5. Create key.properties (never committed to git)
+      - name: Write key.properties
+        run: |
+          cat <<EOF > android/key.properties
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEYSTORE_ALIAS }}
+          storeFile=release.keystore
+          EOF
+
+      # 6. Compute version code from commit count
+      - name: Compute version code
+        id: version
+        run: |
+          VERSION_CODE=$(git rev-list --count HEAD)
+          echo "code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version code: $VERSION_CODE"
+
+      # 7. Build signed AAB
+      - name: Build release AAB
+        run: |
+          flutter build appbundle --release \
+            --no-tree-shake-icons \
+            --build-number=${{ steps.version.outputs.code }}
+
+      # 8. Verify the AAB was produced
+      - name: Verify AAB exists
+        run: |
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          if [ ! -f "$AAB" ]; then
+            echo "❌ AAB not found at $AAB"
+            exit 1
+          fi
+          echo "✅ AAB size: $(du -sh $AAB | cut -f1)"
+
+      # 9. Upload AAB as workflow artifact (always keep a copy)
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab-${{ github.ref_name }}-${{ steps.version.outputs.code }}
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
+
+      # 10. Decode Google Play service account key
+      - name: Decode Google Play key
+        run: |
+          echo "${{ secrets.GOOGLE_PLAY_KEY }}" | base64 --decode > gplay-key.json
+
+      # 11. Determine Play Store track
+      - name: Set deploy track
+        id: track
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "track=production" >> $GITHUB_OUTPUT
+          else
+            echo "track=internal" >> $GITHUB_OUTPUT
+          fi
+
+      # 12. Upload to Google Play
+      - name: Upload to Google Play (${{ steps.track.outputs.track }} track)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJson: gplay-key.json
+          packageName: ${{ secrets.ANDROID_PACKAGE_NAME }}
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          track: ${{ steps.track.outputs.track }}
+          status: ${{ github.ref_name == 'main' && 'completed' || 'draft' }}
+          inAppUpdatePriority: ${{ github.ref_name == 'main' && '5' || '2' }}
+
+      # 13. Cleanup sensitive files
+      - name: Clean up secrets
+        if: always()
+        run: |
+          rm -f android/app/release.keystore
+          rm -f android/key.properties
+          rm -f gplay-key.json
+
+      # 14. Summary
+      - name: Deployment summary
+        run: |
+          echo "### 🚀 Android Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Track | \`${{ steps.track.outputs.track }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version Code | \`${{ steps.version.outputs.code }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
